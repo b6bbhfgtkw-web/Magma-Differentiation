@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Magma Differentiation Visualizer — Fractional Crystallization</title>
+  <style>
+    :root{ --bg:#0b1220; --panel:#101b33; --text:#e6edf7; --muted:#9fb0cc; --border:#22304f; --btn:#1b2b52; --btnb:#2a3d73; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text); }
+    header{ padding:16px 20px; border-bottom:1px solid var(--border); background:linear-gradient(90deg,#0b1220,#0f1a35); }
+    header h1{ margin:0; font-size:18px; font-weight:700; }
+    header p{ margin:6px 0 0; color:var(--muted); font-size:13px; max-width:1200px; line-height:1.35; }
+    .wrap{ display:grid; grid-template-columns: 460px 1fr; gap:14px; padding:14px; }
+    .card{ background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:12px; }
+    .controls{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    button{ background:var(--btn); border:1px solid var(--btnb); color:var(--text); padding:8px 10px; border-radius:10px; cursor:pointer; font-weight:650; }
+    button:hover{ border-color:#3f61b3; }
+    button:disabled{ opacity:.45; cursor:not-allowed; }
+    input[type="range"]{ width:100%; }
+    input[type="number"]{ width:86px; background:#0c1630; color:var(--text); border:1px solid var(--btnb); border-radius:10px; padding:6px 8px; }
+    label{ font-size:12px; color:var(--muted); }
+    .muted{ color:var(--muted); }
+    .kpi{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    .kpi div{ background:#0c1630; border:1px solid var(--border); border-radius:10px; padding:10px; }
+    .kpi .v{ font-size:18px; font-weight:800; margin-top:4px; }
+    .grid2{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .gridCharts{ display:grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap:12px; }
+    canvas{ background:#0c1630; border:1px solid var(--border); border-radius:10px; }
+    table{ width:100%; border-collapse:collapse; font-size:12px; }
+    th, td{ border-bottom:1px solid var(--border); padding:6px 6px; text-align:right; }
+    th:first-child, td:first-child{ text-align:left; }
+    .note{ font-size:12px; color:var(--muted); line-height:1.35; margin:8px 0 0; }
+    .warn{ background:#2a0f1a; border:1px solid #6b2438; padding:10px; border-radius:10px; color:#ffd1dc; font-size:12px; margin-top:12px; display:none; }
+    .pill{ display:inline-block; padding:2px 8px; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:12px; margin-left:8px; }
+    .minihead{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+    .minihead h3{ margin:0; font-size:14px; }
+    .subtle{ font-size:12px; color:var(--muted); }
+
+    .pieWrap{ display:flex; justify-content:center; }
+    .pieBox{ position:relative; width:min(320px, 100%); height:clamp(140px, 22vw, 220px); margin:0 auto; }
+
+    .magmaBox{ background:#0c1630; border:1px solid var(--border); border-radius:10px; padding:10px; }
+    .bar{ display:flex; height:22px; border-radius:10px; overflow:hidden; border:1px solid #22304f; background:#0b1220; }
+    .seg{ height:100%; }
+    .seg:hover{ filter:brightness(1.1); }
+    .legend{ display:grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap:6px 10px; margin-top:10px; }
+    .legitem{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+    .swatch{ width:12px; height:12px; border-radius:3px; border:1px solid #22304f; }
+    .tiny{ font-size:11px; }
+
+    .presetWrap{ background:#0c1630; border:1px solid var(--border); border-radius:10px; padding:10px; }
+    .presetRow{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+    .bandBar{ position:relative; height:12px; border-radius:999px; overflow:hidden; border:1px solid #22304f; margin-top:8px; }
+    .bandBar::before{ content:''; position:absolute; inset:0; background:linear-gradient(90deg,#2a0f1a 0% 28.57%,#1b2b52 28.57% 57.14%,#2a2f0f 57.14% 78.57%,#103319 78.57% 100%); opacity:0.9; }
+    .tick{ position:absolute; top:-3px; width:2px; height:18px; background:#9fb0cc; opacity:0.8; }
+    .tickLabel{ position:absolute; top:14px; transform:translateX(-50%); font-size:11px; color:var(--muted); white-space:nowrap; }
+    .tag{ display:inline-block; padding:2px 8px; border:1px solid var(--border); border-radius:999px; font-size:11px; color:var(--muted); }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Magma Differentiation Visualizer <span class="pill">Fractional crystallization • variable steps</span></h1>
+  <p>
+    The model now continues adding steps <b>until the melt is fully crystallized</b> (step count varies with parent melt). Students still advance one step at a time (no jump-ahead). A predefined 10-step schedule runs first, then an automatic “finish crystallizing the melt” phase takes over.
+  </p>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="controls">
+      <button id="btnPrev">⟵ Prev</button>
+      <button id="btnNext">Next ⟶</button>
+      <button id="btnResetStep">Reset Step</button>
+      <span class="tag" id="stepCountTag">Steps: —</span>
+    </div>
+
+    <div style="margin-top:10px;">
+      <div class="muted" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Crystallization step: <b id="stepLabel">0</b></span>
+        <span>Fraction liquid (F): <b id="fLabel">1.000</b></span>
+      </div>
+      <input id="stepSlider" type="range" min="0" max="0" step="1" value="0" />
+      <div class="note">You can slide backward to review, but you cannot jump ahead of the furthest step you’ve reached.</div>
+    </div>
+
+    <div class="kpi">
+      <div>
+        <div class="muted">Total cations in melt</div>
+        <div class="v" id="totalCations">—</div>
+      </div>
+      <div>
+        <div class="muted">Mg# = Mg/(Mg+Fe)</div>
+        <div class="v" id="mgNum">—</div>
+      </div>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:14px;">Parent melt selector (Ultramafic → Basaltic → Andesitic → Felsic)</h3>
+    <div class="presetWrap">
+      <div class="presetRow">
+        <div>
+          <div class="muted">Composition slider (proxy: SiO<sub>2</sub> wt%)</div>
+          <div class="note" id="presetLabel">—</div>
+        </div>
+        <span class="tag" id="presetTag">Preset</span>
+      </div>
+
+      <input id="presetSiO2" type="range" min="35" max="75" step="1" value="50" />
+      <div class="bandBar" aria-hidden="true">
+        <div class="tick" style="left:25%;"></div>
+        <div class="tick" style="left:50%;"></div>
+        <div class="tick" style="left:75%;"></div>
+        <div class="tickLabel" style="left:0%;">35</div>
+        <div class="tickLabel" style="left:25%;">45</div>
+        <div class="tickLabel" style="left:50%;">55</div>
+        <div class="tickLabel" style="left:75%;">65</div>
+        <div class="tickLabel" style="left:100%;">75</div>
+      </div>
+      <div class="note">Boundaries: <b>&lt;45 ultramafic</b>, <b>45–55 basaltic</b>, <b>55–65 andesitic</b>, <b>65–75 felsic</b>.</div>
+
+      <div class="controls" style="margin-top:10px;">
+        <button id="btnApplyPreset">Apply preset</button>
+        <label style="display:flex; align-items:center; gap:6px;"><input id="autoPreset" type="checkbox" checked /> Auto-apply when sliding</label>
+      </div>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:14px;">Initial melt cations (manual input)</h3>
+    <div class="note">Edit any value and click <b>Apply manual</b>. Moving the preset slider (or Apply preset) overwrites these values.</div>
+    <div style="margin-top:8px;">
+      <table id="tblInit"><thead><tr><th>Element</th><th>Count</th></tr></thead><tbody></tbody></table>
+      <div class="controls" style="margin-top:8px;">
+        <button id="btnApplyInit">Apply manual</button>
+        <button id="btnResetInit">Reset to default</button>
+      </div>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:14px;">Minerals crystallized this step</h3>
+    <div class="note">The first 10 steps follow the predefined schedule. After that, “auto-finish” steps crystallize what the remaining melt can supply.</div>
+    <div style="margin-top:8px; max-height:210px; overflow:auto;">
+      <table id="tblRemoved"><thead><tr><th>Mineral</th><th>Actual</th><th class="muted">Requested</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <h3 style="margin:14px 0 8px; font-size:14px;">Melt composition (current step)</h3>
+    <div class="grid2">
+      <div>
+        <div class="muted" style="margin-bottom:6px;">Cations remaining (counts)</div>
+        <div style="max-height:210px; overflow:auto;">
+          <table id="tblCounts"><thead><tr><th>Element</th><th>Count</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div>
+        <div class="muted" style="margin-bottom:6px;">Melt composition (cation %)</div>
+        <div style="max-height:210px; overflow:auto;">
+          <table id="tblPct"><thead><tr><th>Element</th><th>%</th></tr></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="warnBox" class="warn"></div>
+  </div>
+
+  <div class="card">
+    <div class="minihead"><h3>Magma visualizer (total magma partition)</h3><div class="subtle">Melt + cumulative crystals (relative area = % of total)</div></div>
+    <div class="magmaBox">
+      <div class="bar" id="magmaBar"></div>
+      <div class="legend" id="magmaLegend"></div>
+      <div class="note tiny">Percentages are based on <b>cation totals</b>: remaining melt cations + cations locked into each mineral (sum ≈ 100%).</div>
+    </div>
+
+    <div style="margin-top:14px;" class="minihead"><h3>Normalized mineral modes (pie) — current step</h3><div class="subtle">ol / pyx / plag / alk / qtz</div></div>
+    <div class="pieWrap"><div class="pieBox"><canvas id="chartPie"></canvas></div></div>
+
+    <div style="margin-top:14px;" class="minihead"><h3>Per-cation trends: melt % vs crystallized each step</h3><div class="subtle">Incremental plotting • Si 0–100%, others 0–50%</div></div>
+    <div class="gridCharts" style="margin-top:8px;">
+      <div><canvas id="c_Si" height="200"></canvas></div>
+      <div><canvas id="c_Al" height="200"></canvas></div>
+      <div><canvas id="c_Mg" height="200"></canvas></div>
+      <div><canvas id="c_Fe" height="200"></canvas></div>
+      <div><canvas id="c_Ca" height="200"></canvas></div>
+      <div><canvas id="c_Na" height="200"></canvas></div>
+      <div><canvas id="c_K" height="200"></canvas></div>
+      <div><canvas id="c_Ti" height="200"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ===== Model constants =====
+const DEFAULT_INITIAL_CATIONS = { Si:184, Ti:5, Al:71, Fe:38, Mg:40, Ca:33, Na:23, K:6 };
+let INITIAL_CATIONS = JSON.parse(JSON.stringify(DEFAULT_INITIAL_CATIONS));
+
+const BASE_STEPS = 10;
+
+const BASE_CRYSTALLIZATION = {
+  "Fo":        [2,3,4,3,2,0,0,0,0,0],
+  "Fa":        [0,0,1,1,1,1,0,0,0,0],
+  "Di":        [0,0,0,1,1,4,2,2,1,1],
+  "Anorthite": [0,1,2,3,3,4,3,3,1,1],
+  "Albite":    [0,0,0,0,0,1,3,6,5,7],
+  "K-spar":    [0,0,0,0,0,0,0,0,2,2],
+  "Quartz":    [0,0,0,0,0,0,0,0,1,4],
+  "Ilmenite":  [0,0,0,0,0,0,1,2,1,1],
+  "Magnetite": [0,0,0,0,1,3,1,1,1,1]
+};
+
+const STOICH = {
+  "Fo":        {Si:1, Mg:2},
+  "Fa":        {Si:1, Fe:2},
+  "Di":        {Si:2, Ca:1, Mg:1},
+  "Anorthite": {Si:2, Al:2, Ca:1},
+  "Albite":    {Si:3, Al:1, Na:1},
+  "K-spar":    {Si:3, Al:1, K:1},
+  "Quartz":    {Si:1},
+  "Ilmenite":  {Fe:1, Ti:1},
+  "Magnetite": {Fe:3}
+};
+
+const PRETTY_MINERAL = {
+  "Fo":"Forsterite (Mg₂SiO₄)", "Fa":"Fayalite (Fe₂SiO₄)", "Di":"Diopside (CaMgSi₂O₆)",
+  "Anorthite":"Anorthite (CaAl₂Si₂O₈)", "Albite":"Albite (NaAlSi₃O₈)", "K-spar":"K‑feldspar (KAlSi₃O₈)",
+  "Quartz":"Quartz (SiO₂)", "Ilmenite":"Ilmenite (FeTiO₃)", "Magnetite":"Magnetite (Fe₃O₄)"
+};
+
+const ELEMENT_ORDER = ["Si","Al","Mg","Fe","Ca","Na","K","Ti"];
+const MINERAL_ORDER = ["Fo","Fa","Di","Anorthite","Albite","K-spar","Quartz","Ilmenite","Magnetite"];
+const LATE_ORDER = ["Magnetite","Ilmenite","Quartz","K-spar","Albite","Anorthite","Di","Fa","Fo"]; // auto-finish preference
+
+const MINERAL_COLORS = { Melt:'#2f81f7', Fo:'#7ee787', Fa:'#ffa657', Di:'#79c0ff', Anorthite:'#f2cc60', Albite:'#a5d6ff', 'K-spar':'#ff7b72', Quartz:'#c9d1d9', Ilmenite:'#d29922', Magnetite:'#8b949e' };
+const CATION_COLORS = { Si:"#79c0ff", Al:"#ff7b72", Mg:"#d2a8ff", Fe:"#ffa657", Ca:"#7ee787", Na:"#a5d6ff", K:"#f2cc60", Ti:"#c9d1d9" };
+
+function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function sumCations(melt){ return ELEMENT_ORDER.reduce((acc, el)=>acc + (melt[el] ?? 0), 0); }
+function meltCompositionPct(melt){
+  const tot = sumCations(melt);
+  const out = {}; for(const el of ELEMENT_ORDER){ out[el] = tot>0 ? (melt[el]/tot*100) : 0; }
+  return out;
+}
+function mgNumber(melt){
+  const mg = melt.Mg ?? 0, fe = melt.Fe ?? 0;
+  return (mg+fe)>0 ? mg/(mg+fe) : 0;
+}
+function cationsPerUnit(mineral){
+  const sto = STOICH[mineral] || {};
+  let s=0; for(const el of Object.keys(sto)) s += sto[el];
+  return s;
+}
+
+// ===== Parent melt preset slider (proxy: SiO2 wt%) =====
+function magmaCategory(si){
+  if(si < 45) return {name:'Ultramafic', range:'<45', tag:'Ultramafic'};
+  if(si < 55) return {name:'Basaltic', range:'45–55', tag:'Basaltic'};
+  if(si < 65) return {name:'Andesitic', range:'55–65', tag:'Andesitic'};
+  return {name:'Felsic', range:'65–75', tag:'Felsic'};
+}
+
+const ANCHORS = {
+  35: {Si:40, Al:6,  Mg:30, Fe:10, Ca:10, Na:2,  K:1.5, Ti:0.5},
+  45: {Si:46, Al:15, Mg:12, Fe:12, Ca:10, Na:3,  K:0.8, Ti:1.2},
+  55: {Si:50, Al:18, Mg:7,  Fe:9,  Ca:7,  Na:6,  K:1.7, Ti:1.3},
+  65: {Si:56, Al:19.5,Mg:3, Fe:6,  Ca:5,  Na:7.5,K:2.3, Ti:0.7},
+  75: {Si:64, Al:18, Mg:0.8,Fe:2,  Ca:1.8,Na:8.5,K:4.6, Ti:0.3}
+};
+
+function lerp(a,b,t){ return a + (b-a)*t; }
+function interpComp(a,b,t){
+  const out={}; for(const el of ELEMENT_ORDER){ out[el]=lerp(a[el], b[el], t); }
+  return out;
+}
+
+function compositionFromSi(si){
+  si = Math.max(35, Math.min(75, si));
+  let lo, hi;
+  if(si <= 45){ lo=35; hi=45; }
+  else if(si <= 55){ lo=45; hi=55; }
+  else if(si <= 65){ lo=55; hi=65; }
+  else { lo=65; hi=75; }
+  const t = (si - lo) / (hi - lo);
+  const comp = interpComp(ANCHORS[lo], ANCHORS[hi], t);
+  const s = ELEMENT_ORDER.reduce((acc,el)=>acc+comp[el],0);
+  for(const el of ELEMENT_ORDER){ comp[el] = comp[el]/s*100; }
+  return comp;
+}
+
+function countsFromPercents(pcts, total){
+  const base = {}; const frac = []; let sumBase = 0;
+  for(const el of ELEMENT_ORDER){
+    const r = total * (pcts[el]/100);
+    const b = Math.floor(r);
+    base[el]=b; sumBase += b;
+    frac.push({el, f:r-b});
+  }
+  frac.sort((a,b)=>b.f-a.f);
+  let rem = total - sumBase;
+  for(let i=0; i<rem; i++) base[frac[i % frac.length].el] += 1;
+  return base;
+}
+
+function updatePresetLabel(){
+  const si = parseInt(document.getElementById('presetSiO2').value,10);
+  const cat = magmaCategory(si);
+  document.getElementById('presetLabel').innerHTML = `<b>${cat.name}</b> (SiO<sub>2</sub> ${cat.range} wt% • slider=${si})`;
+  document.getElementById('presetTag').textContent = cat.tag;
+}
+
+function applyPresetFromSlider(){
+  const si = parseInt(document.getElementById('presetSiO2').value,10);
+  const total = Math.max(1, Math.round(sumCations(INITIAL_CATIONS)));
+  const pcts = compositionFromSi(si);
+  INITIAL_CATIONS = countsFromPercents(pcts, total);
+  buildInitInputs();
+  resetProgress();
+}
+
+// ===== Variable-step crystallization =====
+function baseRequested(step){
+  const req = {}; for(const m of MINERAL_ORDER) req[m]=0;
+  for(const m of MINERAL_ORDER){
+    const arr = BASE_CRYSTALLIZATION[m] || [];
+    req[m] = (arr[step-1] ?? 0);
+  }
+  return req;
+}
+
+function maxUnitsPossible(mineral, melt){
+  const sto = STOICH[mineral] || {};
+  let max = Infinity;
+  for(const el of Object.keys(sto)){
+    const need = sto[el];
+    const avail = melt[el] ?? 0;
+    max = Math.min(max, Math.floor(avail / need));
+  }
+  return (max===Infinity) ? 0 : max;
+}
+
+function generateAutoRequested(melt){
+  const remaining = sumCations(melt);
+  if(remaining <= 0) return null;
+
+  // target amount of cations to crystallize in this auto step (keeps step count reasonable)
+  let budget = Math.max(12, Math.round(0.12 * remaining));
+  const req = {}; for(const m of MINERAL_ORDER) req[m]=0;
+
+  // two passes to fill budget if possible
+  for(let pass=0; pass<2; pass++){
+    for(const m of LATE_ORDER){
+      if(budget <= 0) break;
+      const cpu = cationsPerUnit(m);
+      if(cpu <= 0) continue;
+      const maxByAvail = maxUnitsPossible(m, melt);
+      if(maxByAvail <= 0) continue;
+      const maxByBudget = Math.floor(budget / cpu);
+      if(maxByBudget <= 0) continue;
+      const units = Math.min(maxByAvail, maxByBudget);
+      if(units <= 0) continue;
+      req[m] += units;
+      // pretend we spend budget; this is only for shaping requested step size
+      budget -= units * cpu;
+      // also reduce a working melt estimate so we don't request nonsense
+      const sto = STOICH[m] || {};
+      for(const el of Object.keys(sto)){
+        melt[el] = (melt[el] ?? 0) - sto[el]*units;
+        if(melt[el] < 0) melt[el] = 0;
+      }
+    }
+  }
+
+  // If nothing requested, stop
+  const totalReq = MINERAL_ORDER.reduce((acc,m)=>acc+(req[m]||0),0);
+  if(totalReq <= 0) return null;
+  return req;
+}
+
+function requestedForStep(step, melt){
+  if(step <= BASE_STEPS) return baseRequested(step);
+  // auto steps: use a copy of melt for planning
+  return generateAutoRequested(clone(melt));
+}
+
+function applyStepLimited(melt, req, step){
+  const meltAfter = clone(melt);
+  const removed = {}; for(const el of ELEMENT_ORDER) removed[el]=0;
+  const actualMinerals = {}; const requestedMinerals = {}; const lockedByMineral = {};
+
+  for(const mineral of MINERAL_ORDER){
+    const reqUnits = (req?.[mineral] ?? 0);
+    requestedMinerals[mineral] = reqUnits;
+    if(reqUnits <= 0){ actualMinerals[mineral]=0; lockedByMineral[mineral]=0; continue; }
+
+    const sto = STOICH[mineral] || {};
+    let maxUnits = reqUnits;
+    for(const el of Object.keys(sto)){
+      const need = sto[el];
+      const avail = meltAfter[el] ?? 0;
+      const possible = Math.floor(avail / need);
+      if(possible < maxUnits) maxUnits = possible;
+    }
+
+    const act = Math.max(0, maxUnits);
+    actualMinerals[mineral] = act;
+    let locked = 0;
+    if(act>0){
+      for(const el of Object.keys(sto)){
+        const delta = sto[el]*act;
+        meltAfter[el] = (meltAfter[el] ?? 0) - delta;
+        if(meltAfter[el] < 0) meltAfter[el] = 0;
+        removed[el] += delta;
+        locked += delta;
+      }
+    }
+    lockedByMineral[mineral] = locked;
+  }
+
+  return { meltAfter, removed, actualMinerals, requestedMinerals, lockedByMineral };
+}
+
+function buildHistory(){
+  const meltCounts = [clone(INITIAL_CATIONS)];
+  const compPct = [meltCompositionPct(meltCounts[0])];
+  const removedPct = [Object.fromEntries(ELEMENT_ORDER.map(e=>[e,0]))];
+  const perStep = [{ actualMinerals:{}, requestedMinerals:{}, removed:Object.fromEntries(ELEMENT_ORDER.map(e=>[e,0])), lockedByMineral:{} }];
+
+  const cumLocked = Object.fromEntries(MINERAL_ORDER.map(m=>[m,0]));
+  const magmaPartition = [ { Melt: sumCations(meltCounts[0]), ...clone(cumLocked) } ];
+
+  let melt = clone(INITIAL_CATIONS);
+  let step = 1;
+  const MAX_STEPS = 200; // safety
+
+  while(step <= MAX_STEPS){
+    if(sumCations(melt) <= 0){ break; }
+    const req = requestedForStep(step, melt);
+    if(!req){ break; }
+
+    const res = applyStepLimited(melt, req, step);
+    melt = res.meltAfter;
+
+    meltCounts.push(clone(melt));
+    compPct.push(meltCompositionPct(melt));
+
+    const rp = {};
+    for(const el of ELEMENT_ORDER){
+      const denom = INITIAL_CATIONS[el] || 0;
+      rp[el] = denom>0 ? (res.removed[el]/denom*100) : 0;
+      rp[el] = Math.max(0, Math.min(100, rp[el]));
+    }
+    removedPct.push(rp);
+
+    perStep.push({
+      actualMinerals: res.actualMinerals,
+      requestedMinerals: res.requestedMinerals,
+      removed: res.removed,
+      lockedByMineral: res.lockedByMineral,
+      phase: (step <= BASE_STEPS ? 'base' : 'auto')
+    });
+
+    for(const m of MINERAL_ORDER){ cumLocked[m] += (res.lockedByMineral[m] || 0); }
+    magmaPartition.push({ Melt: sumCations(melt), ...clone(cumLocked) });
+
+    step += 1;
+  }
+
+  const totalSteps = perStep.length - 1; // exclude step 0
+  return { meltCounts, compPct, removedPct, perStep, magmaPartition, totalSteps };
+}
+
+function normalizedModesFromActual(stepInfo){
+  const am = stepInfo.actualMinerals || {};
+  const counts = { ol:0, pyx:0, plag:0, alk:0, qtz:0 };
+  counts.ol = (am.Fo||0) + (am.Fa||0);
+  counts.pyx = (am.Di||0);
+  counts.plag = (am.Anorthite||0) + (am.Albite||0);
+  counts.alk = (am["K-spar"]||0);
+  counts.qtz = (am.Quartz||0);
+  const total = counts.ol + counts.pyx + counts.plag + counts.alk + counts.qtz;
+  const normalized = {}; for(const k of Object.keys(counts)) normalized[k] = total>0 ? (counts[k]/total*100) : 0;
+  return {counts, normalized, total};
+}
+
+// ===== UI + charts =====
+const stepSlider = document.getElementById('stepSlider');
+const stepLabel  = document.getElementById('stepLabel');
+const fLabel     = document.getElementById('fLabel');
+const totalCations = document.getElementById('totalCations');
+const mgNum        = document.getElementById('mgNum');
+const tblRemoved = document.querySelector('#tblRemoved tbody');
+const tblCounts  = document.querySelector('#tblCounts tbody');
+const tblPct     = document.querySelector('#tblPct tbody');
+const tblInit    = document.querySelector('#tblInit tbody');
+const warnBox    = document.getElementById('warnBox');
+const magmaBar   = document.getElementById('magmaBar');
+const magmaLegend= document.getElementById('magmaLegend');
+const stepCountTag = document.getElementById('stepCountTag');
+
+let currentStep = 0;
+let maxUnlocked = 0;
+let totalStepsGlobal = 0;
+
+let pieChart = null;
+const cationCharts = {};
+
+function ensureCharts(){
+  if(!pieChart){
+    pieChart = new Chart(document.getElementById('chartPie'), {
+      type:'doughnut',
+      data:{ labels:['ol','pyx','plag','alk','qtz'], datasets:[{ data:[0,0,0,0,0], backgroundColor:['#7ee787','#79c0ff','#f2cc60','#ff7b72','#c9d1d9'], borderColor:'#0b1220', borderWidth:1 }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#e6edf7' } } } }
+    });
+  }
+  for(const el of ELEMENT_ORDER){
+    if(cationCharts[el]) continue;
+    cationCharts[el] = new Chart(document.getElementById(`c_${el}`), {
+      type:'line',
+      data:{ labels:[0], datasets:[] },
+      options:{
+        responsive:true,
+        plugins:{ legend:{ labels:{ color:'#e6edf7' } }, title:{ display:true, text:`${el}: in melt vs crystallized`, color:'#e6edf7', font:{ size:12, weight:'600' } } },
+        scales:{
+          x:{ title:{ display:true, text:'Step', color:'#e6edf7' }, ticks:{ color:'#9fb0cc' }, grid:{ color:'#22304f' } },
+          y:{ min:0, max:(el==='Si'?100:50), title:{ display:true, text:'Percent', color:'#e6edf7' }, ticks:{ color:'#9fb0cc' }, grid:{ color:'#22304f' } }
+        }
+      }
+    });
+  }
+}
+
+function buildInitInputs(){
+  tblInit.innerHTML='';
+  for(const el of ELEMENT_ORDER){
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${el}</td><td><input type="number" min="0" step="1" id="init_${el}" value="${INITIAL_CATIONS[el] ?? 0}" /></td>`;
+    tblInit.appendChild(tr);
+  }
+}
+
+function applyInitialFromInputs(){
+  const next = {};
+  for(const el of ELEMENT_ORDER){
+    const v = parseFloat(document.getElementById(`init_${el}`).value);
+    next[el] = Number.isFinite(v) ? Math.max(0, v) : 0;
+  }
+  INITIAL_CATIONS = next;
+  document.getElementById('presetTag').textContent = 'Manual';
+  resetProgress();
+}
+
+function updateTables(history){
+  tblRemoved.innerHTML='';
+  if(currentStep===0){
+    tblRemoved.innerHTML = `<tr><td class="muted">(none)</td><td class="muted">0</td><td class="muted">0</td></tr>`;
+  } else {
+    const info = history.perStep[currentStep];
+    let any=false;
+    for(const m of MINERAL_ORDER){
+      const req = info.requestedMinerals[m] ?? 0;
+      const act = info.actualMinerals[m] ?? 0;
+      if(req>0 || act>0){
+        any=true;
+        const tr=document.createElement('tr');
+        tr.innerHTML = `<td>${PRETTY_MINERAL[m]||m}</td><td>${act}</td><td class="muted">${req}</td>`;
+        tblRemoved.appendChild(tr);
+      }
+    }
+    if(!any) tblRemoved.innerHTML = `<tr><td class="muted">(none)</td><td class="muted">0</td><td class="muted">0</td></tr>`;
+  }
+
+  tblCounts.innerHTML='';
+  const melt = history.meltCounts[currentStep];
+  for(const el of ELEMENT_ORDER){
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${el}</td><td>${(melt[el]??0).toFixed(2)}</td>`;
+    tblCounts.appendChild(tr);
+  }
+
+  tblPct.innerHTML='';
+  const pct = history.compPct[currentStep];
+  for(const el of ELEMENT_ORDER){
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${el}</td><td>${pct[el].toFixed(2)}</td>`;
+    tblPct.appendChild(tr);
+  }
+}
+
+function updateKPIs(history){
+  const melt = history.meltCounts[currentStep];
+  const tot = sumCations(melt);
+  totalCations.textContent = tot.toFixed(2);
+  mgNum.textContent = mgNumber(melt).toFixed(3);
+  stepLabel.textContent = String(currentStep);
+  const initTot = sumCations(INITIAL_CATIONS);
+  fLabel.textContent = (initTot>0 ? (tot/initTot) : 0).toFixed(3);
+}
+
+function updateMagmaVisualizer(history){
+  const part = history.magmaPartition[currentStep];
+  const initTot = sumCations(INITIAL_CATIONS) || 1;
+  const segments = [];
+  segments.push({ key:'Melt', label:'Melt (liquid)', value:part.Melt, color:MINERAL_COLORS.Melt });
+  for(const m of MINERAL_ORDER){ segments.push({ key:m, label:PRETTY_MINERAL[m]||m, value:part[m]||0, color:MINERAL_COLORS[m]||'#8b949e' }); }
+
+  magmaBar.innerHTML='';
+  magmaLegend.innerHTML='';
+  for(const seg of segments){
+    const pct = (seg.value/initTot)*100;
+    if(pct <= 0.0001) continue;
+    const div=document.createElement('div');
+    div.className='seg';
+    div.style.width = `${pct}%`;
+    div.style.background = seg.color;
+    div.title = `${seg.label}: ${pct.toFixed(2)}% of total magma (cation basis)`;
+    magmaBar.appendChild(div);
+
+    const li=document.createElement('div');
+    li.className='legitem';
+    li.innerHTML = `<span class="swatch" style="background:${seg.color}"></span><span>${seg.label}</span><span style="margin-left:auto; color:#e6edf7;">${pct.toFixed(1)}%</span>`;
+    magmaLegend.appendChild(li);
+  }
+}
+
+function updateCharts(history){
+  ensureCharts();
+
+  const modes = (currentStep===0) ? {normalized:{ol:0,pyx:0,plag:0,alk:0,qtz:0}} : normalizedModesFromActual(history.perStep[currentStep]);
+  pieChart.data.datasets[0].data = ['ol','pyx','plag','alk','qtz'].map(k=>modes.normalized[k]);
+  pieChart.update();
+
+  const labels = Array.from({length: currentStep+1}, (_,i)=>i);
+  for(const el of ELEMENT_ORDER){
+    const meltLine = history.compPct.map(p=>p[el]).slice(0,currentStep+1);
+    const crystLine = history.removedPct.map(p=>p[el]).slice(0,currentStep+1);
+    const ch = cationCharts[el];
+    ch.data.labels = labels;
+    ch.data.datasets = [
+      { label:'In melt (cation %)', data:meltLine, borderColor:CATION_COLORS[el]||'#fff', backgroundColor:CATION_COLORS[el]||'#fff', borderWidth:2, tension:0.2, pointRadius:(ctx)=> (ctx.dataIndex===currentStep ? 4 : 2) },
+      { label:'Crystallized this step (% of initial)', data:crystLine, borderColor:'#9fb0cc', backgroundColor:'#9fb0cc', borderWidth:2, tension:0.2, borderDash:[6,4], pointRadius:(ctx)=> (ctx.dataIndex===currentStep ? 4 : 2) }
+    ];
+    ch.update();
+  }
+}
+
+function renderAll(){
+  const history = buildHistory();
+  totalStepsGlobal = history.totalSteps;
+  stepCountTag.textContent = `Steps: ${totalStepsGlobal}`;
+
+  // clamp unlocked range if total steps shrink (e.g., manual edit)
+  if(maxUnlocked > totalStepsGlobal) maxUnlocked = totalStepsGlobal;
+  if(currentStep > maxUnlocked) currentStep = maxUnlocked;
+
+  // warn if any limiting occurred or if we hit safety cap
+  let limitedSteps=[];
+  for(let s=1; s<=history.totalSteps; s++){
+    const info=history.perStep[s];
+    for(const m of MINERAL_ORDER){
+      const req=info.requestedMinerals[m]||0;
+      const act=info.actualMinerals[m]||0;
+      if(act < req){ limitedSteps.push(s); break; }
+    }
+  }
+  limitedSteps=[...new Set(limitedSteps)];
+  let msg=[];
+  if(limitedSteps.length) msg.push(`Limiting reagents active in step(s): ${limitedSteps.join(', ')}.`);
+  if(history.totalSteps >= 200) msg.push('Safety cap reached (200 steps).');
+  if(msg.length){ warnBox.style.display='block'; warnBox.innerHTML = `<b>Note:</b> ${msg.join(' ')}`; } else { warnBox.style.display='none'; }
+
+  updateTables(history);
+  updateKPIs(history);
+  updateMagmaVisualizer(history);
+  updateCharts(history);
+
+  // refresh slider bounds
+  stepSlider.max = String(maxUnlocked);
+  stepSlider.value = String(currentStep);
+  document.getElementById('btnPrev').disabled = (currentStep===0);
+  document.getElementById('btnNext').disabled = (currentStep===totalStepsGlobal);
+}
+
+function setStep(step){
+  if(step > maxUnlocked) step = maxUnlocked;
+  if(step < 0) step = 0;
+  currentStep = step;
+  renderAll();
+}
+
+function resetProgress(){
+  currentStep = 0;
+  maxUnlocked = 0;
+  stepSlider.max = '0';
+  stepSlider.value = '0';
+  buildInitInputs();
+  renderAll();
+}
+
+// ===== Bind controls =====
+document.getElementById('btnPrev').onclick = ()=>setStep(currentStep-1);
+document.getElementById('btnNext').onclick = ()=>{
+  // unlock next step only if it exists
+  const history = buildHistory();
+  const total = history.totalSteps;
+  totalStepsGlobal = total;
+  if(currentStep === maxUnlocked && maxUnlocked < total) maxUnlocked += 1;
+  setStep(currentStep+1);
+};
+document.getElementById('btnResetStep').onclick = ()=>resetProgress();
+stepSlider.oninput = (e)=>setStep(parseInt(e.target.value,10));
+
+document.getElementById('btnApplyInit').onclick = ()=>applyInitialFromInputs();
+document.getElementById('btnResetInit').onclick = ()=>{ INITIAL_CATIONS = clone(DEFAULT_INITIAL_CATIONS); document.getElementById('presetTag').textContent='Default'; resetProgress(); };
+
+// Preset slider
+function initPreset(){
+  updatePresetLabel();
+  document.getElementById('presetSiO2').addEventListener('input', ()=>{
+    updatePresetLabel();
+    if(document.getElementById('autoPreset').checked){
+      document.getElementById('presetTag').textContent='Preset';
+      applyPresetFromSlider();
+    }
+  });
+  document.getElementById('btnApplyPreset').onclick = ()=>{ document.getElementById('presetTag').textContent='Preset'; applyPresetFromSlider(); };
+}
+
+// init
+initPreset();
+buildInitInputs();
+resetProgress();
+</script>
+</body>
+</html>
